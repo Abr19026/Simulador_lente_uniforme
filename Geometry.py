@@ -3,7 +3,7 @@ from typing import Tuple, List
 from math import isclose, sqrt, sin, cos, acos, pi
 from dataclasses import dataclass
 
-epsilon = 0.0001
+
 
 @dataclass
 class Point:
@@ -77,15 +77,6 @@ class RayIntersection:
     distance: float
     from_outside: bool
 
-@dataclass
-class Collision:
-    normal: Vector
-    pos: Point
-    distance: float
-    from_outside: bool
-    col_object: any
-    atraviesa: bool
-
 
 @dataclass
 class Triangle:
@@ -99,14 +90,16 @@ class Triangle:
             delta_x = segment[1].x - segment[0].x
             delta_y = segment[1].y - segment[0].y
             divisor = delta_y * ray_dir.comps.x - delta_x * ray_dir.comps.y
+            if divisor == 0:
+                continue
             distance_intersection = (delta_x * (ray.origin.y - segment[0].y) - delta_y * (ray.origin.x - segment[0].x)) / divisor
             inter_point: Point = ray.origin + ray_dir.comps * distance_intersection
             
             def in_float_range(value, min_v, max_v):
                 return (value > min_v and value < max_v) or isclose(value,min_v) or isclose(value,max_v)
 
-            if distance_intersection > epsilon and \
-            in_float_range(inter_point.x, min(segment, key=lambda s:s.x).x, max(segment, key=lambda s:s.x).x) and \
+            #if distance_intersection > epsilon and \
+            if in_float_range(inter_point.x, min(segment, key=lambda s:s.x).x, max(segment, key=lambda s:s.x).x) and \
             in_float_range(inter_point.y, min(segment, key=lambda s:s.y).y, max(segment, key=lambda s:s.y).y):
                 normal = Vector(Point(delta_y, -delta_x))
                 if normal.dot_product(Vector(centro-inter_point)) > 0:
@@ -117,6 +110,4 @@ class Triangle:
         return intersections
 
     def __repr__(self) -> str:
-        return f"   {self.points[0]}\n" +\
-               f"   {self.points[1]}\n" +\
-               f"   {self.points[2]}\n"
+        return f"{self.points}"

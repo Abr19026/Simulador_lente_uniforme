@@ -1,4 +1,4 @@
-from math import isclose, sin, tan, cos, asin, atan, sqrt, pi
+from math import sin, tan, cos, asin, atan, sqrt, pi
 
 # theta: Medio ángulo del haz de luz
 # n: índice de refracción de los prismas
@@ -59,10 +59,11 @@ def f_bnewton(beta, t_out, n, phi_1):
 def df_bnewton(beta, t_out, n, phi_1):
     return cos(beta + t_out) / (n * sqrt(1 - (sin(beta + t_out) ** 2) / (n ** 2))) - 1
 
-if __name__ == "__main__":
-    prismas = design_fresnel_prism_half(25 * pi / 180, 1.5, 1, 4, 10, 4)
-    for prisma in prismas:
-        print(prisma[3] * 180 / pi)
-        angle = atan((prisma[0][0] - prisma[2][0]) / (prisma[0][1] - prisma[1][1]))
-        if not isclose(angle * (-1 if prisma[3] < 0 else 1), prisma[3]):
-            print("No coinciden")
+
+#if __name__ == "__main__":
+#    prismas = design_fresnel_prism_half(25 * pi / 180, 1.5, 1, 4, 10, 4)
+#    for prisma in prismas:
+#        print(prisma[3] * 180 / pi)
+#        angle = atan((prisma[0][0] - prisma[2][0]) / (prisma[0][1] - prisma[1][1]))
+#        if not isclose(angle * (-1 if prisma[3] < 0 else 1), prisma[3]):
+#            print("No coinciden")
