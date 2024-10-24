@@ -12,6 +12,7 @@ from lensDesigner import design_fresnel_prism_half, make_full_fresnel_lens
 class Medium:
     name: str
     n: float
+    opaque: bool
 
 @dataclass
 class RayMedium(Ray):
@@ -41,8 +42,8 @@ class RayDistance(RayMedium):
     def __repr__(self) -> str:
         return f"origin: {self.origin.__repr__()}, dir: {self.direction.__repr__()} distance: {self.distance:,.3f}, end: {self.origin + self.direction.comps * self.distance}\n"
     
-def find_min_collisions(ray, lenses: List[Prism]) -> List[Collision]:
-    collisions = list(chain.from_iterable(map(lambda lens: lens.collision_with_ray(ray), lenses)))
+def find_min_collisions(ray, objects: List[Prism]) -> List[Collision]:
+    collisions = list(chain.from_iterable(map(lambda opt_object: opt_object.collision_with_ray(ray), objects)))
     min_collision = min(collisions, key = lambda x: x.distance, default=None)
     if min_collision == None:
         return []
@@ -63,12 +64,17 @@ def refraction_vector(ray: Ray, collision_normal: Vector, ray_medium_n: float, n
         return None
 
 
-def next_ray(ray: RayMedium, lenses: List[Prism], outside_medium: Medium) -> RayMedium | None:
+# It either returns a new ray, no ray, or direction of last collision
+def next_ray(ray: RayMedium, objects: List[Prism], outside_medium: Medium) -> RayMedium | Collision | None:
     # Obtiene colisiónes mas cercanas
-    collisions = find_min_collisions(ray, lenses)
+    collisions = find_min_collisions(ray, objects)
     # Finaliza rayo
     if len(collisions) < 1:
-        return None
+        return True
+    # Choca rayo si es opaco
+    opacos = list(filter(lambda col: col.col_object.medium.opaque, collisions))
+    if len(opacos) > 0:
+        return opacos[0]
     
     collision = None
     if ray.medium == outside_medium:
@@ -80,13 +86,13 @@ def next_ray(ray: RayMedium, lenses: List[Prism], outside_medium: Medium) -> Ray
     # Crea rayo refractado
     dir_refraccion = refraction_vector(ray, collision.normal, ray.medium.n, new_medium.n)
     if dir_refraccion is None:
-       return None
+       return collision
     return RayMedium(collision.pos, dir_refraccion, new_medium)
 
     
 
 # Outside medium is air
-def ray_trace(initial_rays: List[RayMedium], lenses: List[Prism], outside_medium: Medium) -> List[List[RayDistance]]:
+def ray_trace(initial_rays: List[RayMedium], objects: List[Prism], outside_medium: Medium) -> List[List[RayDistance]]:
     final_rays = []
     initial_rays = initial_rays.copy()
     # Por cada rayo
@@ -94,12 +100,15 @@ def ray_trace(initial_rays: List[RayMedium], lenses: List[Prism], outside_medium
         pending_ray = ray
         ray_path = []
         while True:
-            new_ray = next_ray(pending_ray, lenses, outside_medium)
-            if new_ray is None:
+            ray_or_collision = next_ray(pending_ray, objects, outside_medium)
+            if ray_or_collision is None:
                 ray_path.append(RayDistance.from_medium(pending_ray, inf))
                 break
-            ray_path.append(RayDistance.from_medium(pending_ray, pending_ray.origin.distance(new_ray.origin)))
-            pending_ray = new_ray
+            elif type(ray_or_collision) is Collision:
+                ray_path.append(RayDistance.from_medium(pending_ray, ray_or_collision.distance))
+                break
+            ray_path.append(RayDistance.from_medium(pending_ray, pending_ray.origin.distance(ray_or_collision.origin)))
+            pending_ray = ray_or_collision
         final_rays.append(ray_path)
     return final_rays
 
@@ -113,15 +122,20 @@ def get_prism_data(theta, medium: Medium, a, b, half_N, r):
         prism_data.append(Prism(Triangle(triangle_points), medium))
     return prism_data
 
+def simulate(light_half_angle: float, prism_refr_index: float, a: float, d: float, half_N: int, r: float):
+    # Sets up the simulation environment
+    medium_data = {"air": Medium("air", 1, False), "glass": Medium("glass", prism_refr_index, False), "opaque": Medium("opaque", 0, True)}
+    initial_rays = [RayMedium(Point(0, 0), Vector.init_from_angle(-13 * pi/180), medium_data["air"])]
+    objects = get_prism_data(light_half_angle, medium_data["glass"], a, d - a, half_N, r)
+    objects.append(Prism(Triangle((Point(d,r), Point(d,-r), Point(d+1,0))), medium_data["opaque"]))
+    final_rays = ray_trace(initial_rays, objects, medium_data["air"])
+    return final_rays, objects
 
 # NOTE:
 # Program does not support rays shorter than epsilon units (Constant in Classes.py)
 # Lenses must not overlap each other
 if __name__ == "__main__":
-    # Sets up the simulation environment
-    medium_data = {"air": Medium("air", 1), "glass": Medium("glass", 1.5)}
-    initial_rays = [RayMedium(Point(0, 0), Vector.init_from_angle(-13 * pi/180), medium_data["air"])]
-    lenses = get_prism_data(25 * pi / 180, medium_data["glass"], 1, 4, 10, 4)
-    final_rays = ray_trace(initial_rays,lenses, medium_data["air"])
+    final_rays, objects = simulate(25 * pi / 180, 1.5, 1, 5, 10, 4)
+    #print(f"\nLENSES\n======\n{objects}")
     print(f"RAYS\n====\n{final_rays}")
-    #print(f"\nLENSES\n======\n{lenses}")
+
