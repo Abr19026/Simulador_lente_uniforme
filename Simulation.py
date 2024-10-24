@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import List
 from itertools import chain
+import matplotlib.pyplot as plt
+import numpy as np
 
 from math import asin, inf, sin, pi, isclose
 from Geometry import Ray, Vector, Point, Triangle
@@ -49,8 +51,11 @@ class RayDistance(RayMedium):
     def from_medium(ray: RayMedium, distance):
         return RayDistance(ray.origin, ray.direction, ray.medium, distance)
 
+    def end_point(self):
+        return self.origin + self.direction.comps * self.distance
+
     def __repr__(self) -> str:
-        return f"origin: {self.origin.__repr__()}, dir: {self.direction.__repr__()} distance: {self.distance:,.3f}, end: {self.origin + self.direction.comps * self.distance}\n"
+        return f"origin: {self.origin.__repr__()}, dir: {self.direction.__repr__()} distance: {self.distance:,.3f}, end: {self.end_point()}\n"
 
 
 
@@ -82,7 +87,7 @@ def next_ray(ray: RayMedium, objects: List[Prism], outside_medium: Medium) -> Ra
     collisions = find_min_collisions(ray, objects)
     # Finaliza rayo
     if len(collisions) < 1:
-        return True
+        return None
     # Choca rayo si es opaco
     opacos = list(filter(lambda col: col.col_object.medium.opaque, collisions))
     if len(opacos) > 0:
@@ -103,8 +108,7 @@ def next_ray(ray: RayMedium, objects: List[Prism], outside_medium: Medium) -> Ra
     if dir_refraccion is None:
        return collision
     return RayMedium(collision.pos, dir_refraccion, new_medium)
-
-    
+ 
 
 # Outside medium is air
 def ray_trace(initial_rays: List[RayMedium], objects: List[Prism], outside_medium: Medium) -> List[List[RayDistance]]:
@@ -122,8 +126,11 @@ def ray_trace(initial_rays: List[RayMedium], objects: List[Prism], outside_mediu
             elif type(ray_or_collision) is Collision:
                 ray_path.append(RayDistance.from_medium(pending_ray, ray_or_collision.distance))
                 break
-            ray_path.append(RayDistance.from_medium(pending_ray, pending_ray.origin.distance(ray_or_collision.origin)))
-            pending_ray = ray_or_collision
+            elif type(ray_or_collision) is RayMedium:
+                ray_path.append(RayDistance.from_medium(pending_ray, pending_ray.origin.distance(ray_or_collision.origin)))
+                pending_ray = ray_or_collision
+            else:
+                raise Exception("Hubo un error")
         final_rays.append(ray_path)
     return final_rays
 
@@ -139,38 +146,60 @@ def get_prism_data(theta, medium: Medium, a, b, half_N, r):
 
 # light_half_angle = angulo al que emite luz el lente (<90)
 # prism_refr_index = indice de refracción de los prismas de lente
-# a = distancia del foco al lente
 # d = distancia del foco al disco (d > a)
-# half_N = mitad de la cantidad de prismas en el lente
 # r = radio del disco
 # I = cantidad de rayos a simular (Tratar que no sea multiplo ni divisor de half_N)
-def simulate(light_half_angle: float, prism_refr_index: float, a: float, d: float, half_N: int, r: float, I: int):
+def simulate(light_half_angle: float, optical_system: List[Prism], d: float, r: float, I: int) -> List[RayDistance]:
     # Sets up the simulation environment
     # Creates mediums
-    medium_data = {
-        "air": Medium("air", 1, False), 
-        "glass": Medium("glass", prism_refr_index, False), 
-        "opaque": Medium("opaque", 0, True)}
-    
+    air_medium = Medium("air", 1, False)
+    opaque_medium = Medium("opaque", 0, True)
     # Creates rays
-    initial_rays = [RayMedium(Point(0, 0), Vector.init_from_angle(light_half_angle * (1 - 2/I * i)), medium_data["air"]) for i in range(0,I)]
-    # Creates lens
-    objects = get_prism_data(light_half_angle, medium_data["glass"], a, d - a, half_N, r)
-    # Creates disc
-    objects.append(Prism(Triangle((Point(d,r), Point(d,-r), Point(d+1,0))), medium_data["opaque"]))
+    initial_rays = [RayMedium(Point(0, 0), Vector.init_from_angle(light_half_angle * (1 - 2/I * i)), air_medium) for i in range(0,I)]
+    # Creates system with disc
+    disc = Prism(Triangle((Point(d,r), Point(d,-r), Point(d+1,0))), opaque_medium)
+    full_system = optical_system + [disc]
     # Simulates rays
-    ray_paths = ray_trace(initial_rays, objects, medium_data["air"])
+    ray_paths = ray_trace(initial_rays, full_system, air_medium)
     # Returns results 
-    return ray_paths, objects
+    return ray_paths
 
 # NOTE:
 # Program does not support rays shorter than epsilon units (Constant in Classes.py)
 # Lenses must not overlap each other
-if __name__ == "__main__":
-    final_rays, objects = simulate(25 * pi / 180, 1.5, 1, 5, 10, 4, 44)
-    #print(f"\nLENSES\n======\n{objects}")
-    # checar que cada rayo termine cerca de r * sin(angulo_rayo_inicial) / sin(light_half_angle)
+def Run_test(light_half_angle_degrees, prism_refr_index, a, d, half_N, r, amount_of_rays):
+    light_half_angle = light_half_angle_degrees * pi / 180
+    # Designs the lens
+    lens_material = Medium("glass", prism_refr_index, False)
+    lens_elements = get_prism_data(light_half_angle, lens_material, a, d - a, half_N, r)
+    # Simulates the rays
+    final_rays = simulate(light_half_angle, lens_elements, d, r, amount_of_rays)
+    
+    # Shows results
     print(f"RAYS\n======")
     for path in final_rays:
         print(path)
+    end_points = [path[-1].end_point() for path in final_rays]
+    # checar que cada rayo termine cerca de r * sin(angulo_rayo_inicial) / sin(light_half_angle)
+    
+    # Grafica puntos
+    plt.style.use('_mpl-gallery')
 
+    # make the data
+    x = list(map(lambda p: p.x, end_points))
+    y = list(map(lambda p: p.y, end_points))
+    # size and color:
+    colors = np.random.uniform(15, 80, len(x))
+
+    # plot
+    fig, ax = plt.subplots()
+
+    ax.scatter(x, y, s=np.array([50]), c=colors, vmin=0, vmax=100)
+
+    #ax.set(xlim=(0, 5), xticks=np.arange(1, 8),
+    #       ylim=(-5, 5), yticks=np.arange(-8, 8))
+
+    plt.show()
+
+if __name__ == "__main__":
+    Run_test(55, 1.5, 1, 6, 10, 4, 77)
